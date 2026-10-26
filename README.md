@@ -33,7 +33,7 @@ labels are available") and only detections are plotted.
 
 | Detector | Precision | Recall | F1 | False alarm rate |
 |---|---|---|---|---|
-| Fixed threshold | 1.000 | 0.117 | 0.201 | 0.000 |
+XX
 | Adaptive threshold | 0.832 | 0.997 | 0.905 | 0.007 |
 | Isolation Forest | 0.687 | 0.475 | 0.549 | 0.009 |
 | Hybrid adaptive | 0.895 | 0.958 | 0.924 | 0.004 |
