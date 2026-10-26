@@ -1,12 +1,13 @@
 # SmartWatt
 
 Adaptive machine learning for electricity consumption anomaly detection.
-Compares four detectors on hourly consumption data:
+Compares five detectors on hourly consumption data:
 
 | Detector | Idea |
 |---|---|
 | Fixed threshold | mean ± 3·std of training data (baseline) |
 | Adaptive threshold | robust z-score vs. the same hour/day-type over the last 14 days |
+| Drift-adaptive (EWMA) | online per-slot baseline that follows changing usage |
 | Isolation Forest | unsupervised ML on time-aware features |
 | Hybrid adaptive | adaptive z-score very high, OR Isolation Forest flags it and z-score is moderately high |
 
@@ -29,19 +30,24 @@ Real data: `python run_experiment.py --csv file.csv --time-col Datetime --value-
 Without a label column, metrics are skipped (the abstract's "wherever reliable
 labels are available") and only detections are plotted.
 
-## Results (synthetic, mean of 10 seeds, test split)
+## Results (synthetic with usage drift, mean of 10 seeds, test split)
 
 | Detector | Precision | Recall | F1 | False alarm rate |
 |---|---|---|---|---|
-XX
-| Adaptive threshold | 0.832 | 0.997 | 0.905 | 0.007 |
-| Isolation Forest | 0.687 | 0.475 | 0.549 | 0.009 |
-| Hybrid adaptive | 0.895 | 0.958 | 0.924 | 0.004 |
+| Fixed threshold | 0.876 | 0.191 | 0.307 | 0.001 |
+| Adaptive threshold (14-day window) | 0.755 | 1.000 | 0.856 | 0.011 |
+| Drift-adaptive (EWMA) | 0.923 | 1.000 | 0.959 | 0.003 |
+| Isolation Forest | 0.496 | 0.409 | 0.428 | 0.018 |
+| Hybrid adaptive | 0.832 | 0.986 | 0.901 | 0.006 |
 
-Reading: the fixed threshold is precise but misses nearly everything that is
-anomalous *for its time of day*; Isolation Forest alone lacks time context;
-time-aware thresholds do most of the work; combining them gives the best F1
-with the lowest false alarm rate among the adaptive methods, at a small recall cost.
+Reading: the fixed threshold misses most anomalies that are unusual *for their
+time of day*; Isolation Forest alone lacks time context and is hurt by drift;
+the online drift-adaptive baseline gives the best F1 because it follows the
+usage change. The hybrid improves on the static adaptive window and on
+Isolation Forest alone.
+
+A Jupyter/Colab version is in `SmartWatt_Colab.ipynb` (`SmartWatt_executed.ipynb`
+has outputs saved); `colab_single_cell.py` is the same code as one pasteable cell.
 
 ## Caveats (say these in the report)
 
