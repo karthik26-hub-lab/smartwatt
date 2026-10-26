@@ -27,10 +27,22 @@ def generate_synthetic(days=180, seed=0, anomaly_rate=0.03, drift=0.4):
     ramp = np.clip((np.arange(len(idx)) - 24 * 90) / (24 * 30), 0, 1)
     value *= 1 + drift * ramp
 
-    label = np.zeros(len(idx), dtype=int)
-    kind = np.array([""] * len(idx), dtype=object)
-    n_events = int(len(idx) * anomaly_rate / 2.5)
-    starts = rng.choice(np.arange(24 * 14, len(idx) - 12), n_events, replace=False)
+    label, kind = inject_anomalies(value, rng, anomaly_rate)
+    return pd.DataFrame({"timestamp": idx, "consumption": value,
+                         "is_anomaly": label, "anomaly_type": kind})
+
+
+def inject_anomalies(value, rng, anomaly_rate=0.03, scale=1.0):
+    """Inject labelled anomalies into `value` in place; return (label, kind).
+
+    `scale` is the typical consumption level so additive anomalies stay
+    realistic on real data with different units.
+    """
+    n = len(value)
+    label = np.zeros(n, dtype=int)
+    kind = np.array([""] * n, dtype=object)
+    n_events = int(n * anomaly_rate / 2.5)
+    starts = rng.choice(np.arange(24 * 14, n - 12), n_events, replace=False)
     for s in starts:
         t = rng.choice(["spike", "sustained", "night", "drop"])
         if t == "spike":
@@ -38,17 +50,36 @@ def generate_synthetic(days=180, seed=0, anomaly_rate=0.03, drift=0.4):
             value[sl] *= rng.uniform(2.5, 4.5)
         elif t == "sustained":
             sl = slice(s, s + rng.integers(3, 7))
-            value[sl] += rng.uniform(1.2, 2.0)
+            value[sl] += rng.uniform(1.2, 2.0) * scale
         elif t == "night":
             s = s - s % 24 + rng.integers(0, 5)  # 00:00-04:00
             sl = slice(s, s + rng.integers(2, 4))
-            value[sl] += rng.uniform(1.0, 2.0)
+            value[sl] += rng.uniform(1.0, 2.0) * scale
         else:
             sl = slice(s, s + rng.integers(2, 5))
-            value[sl] = rng.uniform(0.0, 0.05)
+            value[sl] = rng.uniform(0.0, 0.05) * scale
         label[sl] = 1
         kind[sl] = t
-    return pd.DataFrame({"timestamp": idx, "consumption": value,
+    return label, kind
+
+
+def load_uci(path, seed=0, anomaly_rate=0.03):
+    """UCI Household Electric Power Consumption (household_power_consumption.txt).
+
+    Uses Global_active_power (kW), resampled to hourly means. The dataset has
+    no anomaly labels, so labelled anomalies are injected (same recipe as the
+    synthetic data, scaled to the household's mean level); the underlying
+    consumption pattern and drift are real.
+    """
+    df = pd.read_csv(path, sep=";", na_values="?", low_memory=False,
+                     usecols=["Date", "Time", "Global_active_power"])
+    ts = pd.to_datetime(df["Date"] + " " + df["Time"], format="%d/%m/%Y %H:%M:%S")
+    s = pd.Series(df["Global_active_power"].values, index=ts).sort_index()
+    s = s.resample("h").mean().interpolate()
+    value = s.values.copy()
+    rng = np.random.default_rng(seed)
+    label, kind = inject_anomalies(value, rng, anomaly_rate, scale=value.mean())
+    return pd.DataFrame({"timestamp": s.index, "consumption": value,
                          "is_anomaly": label, "anomaly_type": kind})
 
 
