@@ -34,3 +34,8 @@ json.dump(nb, open("SmartWatt_Colab.ipynb", "w"), indent=1)
 # also a plain script for testing
 open("results/_nb_test.py", "w", encoding="utf8").write(
     "\n".join(v for k, v in cells if k == "code").replace("display(", "print(").replace("plt.show()", "plt.close()"))
+
+# single paste-able Colab cell
+code = "\n".join(v for k, v in cells if k == "code")
+code = code.replace("display(", "print(").replace("plt.show()", "plt.show()")
+open("colab_single_cell.py", "w", encoding="utf8").write(code)
