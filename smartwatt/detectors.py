@@ -88,3 +88,36 @@ class HybridAdaptive:
         z = np.abs(np.nan_to_num(adaptive_z(df, self.window)))
         iso = self.iforest.predict(df)
         return ((z > self.k_hi) | ((iso == 1) & (z > self.k_lo))).astype(int)
+
+
+class DriftAdaptive:
+    """Online EWMA baseline per (hour, day-type) slot.
+
+    The baseline mean and mean absolute deviation are updated after every
+    reading with rate `alpha`, so the threshold follows gradual changes in
+    household usage (concept drift). Flagged readings are not used for the
+    update, which stops anomalies from polluting the baseline.
+    """
+
+    def __init__(self, k=4.0, alpha=0.1, warmup=4):
+        self.k, self.alpha, self.warmup = k, alpha, warmup
+
+    def fit(self, train):
+        return self
+
+    def predict(self, df):
+        mean, dev, n = {}, {}, {}
+        out = np.zeros(len(df), dtype=int)
+        for i, (c, h, w) in enumerate(zip(df["consumption"], df["hour"], df["is_weekend"])):
+            key = (h, w)
+            if key not in mean:
+                mean[key], dev[key], n[key] = c, 0.05, 1
+                continue
+            z = abs(c - mean[key]) / max(1.25 * dev[key], 0.05)
+            flag = n[key] >= self.warmup and z > self.k
+            out[i] = int(flag)
+            if not flag:
+                dev[key] += self.alpha * (abs(c - mean[key]) - dev[key])
+                mean[key] += self.alpha * (c - mean[key])
+            n[key] += 1
+        return out

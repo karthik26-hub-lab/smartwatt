@@ -10,7 +10,7 @@ def add_features(df):
     d = df.copy()
     ts = pd.to_datetime(d["timestamp"])
     d["hour"] = ts.dt.hour
-    d["is_weekend"] = (ts.dt.dayofweek >= 5).astype(int)
+    d["is_weekend"] = (ts.dt.day_of_week >= 5).astype(int)
     d["hour_sin"] = np.sin(2 * np.pi * d["hour"] / 24)
     d["hour_cos"] = np.cos(2 * np.pi * d["hour"] / 24)
     c = d["consumption"]

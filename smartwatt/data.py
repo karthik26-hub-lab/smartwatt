@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 
 
-def generate_synthetic(days=180, seed=0, anomaly_rate=0.03):
+def generate_synthetic(days=180, seed=0, anomaly_rate=0.03, drift=0.4):
     """Hourly household consumption (kWh) with injected, labelled anomalies.
 
     Normal behaviour: morning and evening peaks, higher weekend daytime use,
@@ -15,7 +15,7 @@ def generate_synthetic(days=180, seed=0, anomaly_rate=0.03):
     rng = np.random.default_rng(seed)
     idx = pd.date_range("2024-01-01", periods=days * 24, freq="h")
     hour = idx.hour.values
-    weekend = (idx.dayofweek.values >= 5).astype(float)
+    weekend = (idx.day_of_week.values >= 5).astype(float)
 
     base = 0.35 + 0.0 * hour
     base += 0.9 * np.exp(-0.5 * ((hour - 7.5) / 1.4) ** 2)
@@ -23,6 +23,9 @@ def generate_synthetic(days=180, seed=0, anomaly_rate=0.03):
     base += weekend * 0.6 * np.exp(-0.5 * ((hour - 13) / 3.0) ** 2)
     season = 1 + 0.25 * np.sin(2 * np.pi * np.arange(len(idx)) / (24 * 365) * 2)
     value = base * season * rng.lognormal(0, 0.12, len(idx))
+    # concept drift: usage level ramps up by `drift` over days 90-120 (e.g. new appliance)
+    ramp = np.clip((np.arange(len(idx)) - 24 * 90) / (24 * 30), 0, 1)
+    value *= 1 + drift * ramp
 
     label = np.zeros(len(idx), dtype=int)
     kind = np.array([""] * len(idx), dtype=object)

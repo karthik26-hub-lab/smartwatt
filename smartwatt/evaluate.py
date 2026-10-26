@@ -4,7 +4,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score, confusion_m
 
 from .data import generate_synthetic
 from .features import add_features
-from .detectors import FixedThreshold, AdaptiveThreshold, IsolationForestDetector, HybridAdaptive
+from .detectors import FixedThreshold, AdaptiveThreshold, IsolationForestDetector, HybridAdaptive, DriftAdaptive
 
 
 def metrics(y_true, y_pred):
@@ -18,6 +18,7 @@ def metrics(y_true, y_pred):
 def make_detectors(seed=0):
     return {"Fixed threshold": FixedThreshold(),
             "Adaptive threshold": AdaptiveThreshold(),
+            "Drift-adaptive (EWMA)": DriftAdaptive(),
             "Isolation Forest": IsolationForestDetector(seed=seed),
             "Hybrid adaptive": HybridAdaptive(seed=seed)}
 
