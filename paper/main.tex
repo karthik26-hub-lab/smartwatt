@@ -27,7 +27,7 @@ anomaly detection, electricity consumption, Isolation Forest, adaptive threshold
 \section{Introduction}
 Smart meters make fine-grained household consumption data widely available. Unexpected increases or drops can indicate faulty appliances, appliances left on, or outages, and flagging them helps users monitor energy use. Detecting such readings is difficult because ``normal'' depends on the hour of day, the day of week, and the household's changing habits. A fixed global threshold ignores this context: a reading that is ordinary at 19:00 may be highly unusual at 03:00.
 
-Anomaly detection in time series has been surveyed extensively \cite{chandola2009}. Tree-based isolation methods such as Isolation Forest \cite{liu2008} are popular because they need no labels, while robust statistics based on the median and median absolute deviation (MAD) provide outlier scores that are less sensitive to the outliers themselves \cite{leys2013}. Changing usage patterns are an instance of concept drift \cite{gama2014}, which static models do not handle.
+Anomaly detection in time series has been surveyed extensively \cite{chandola2009,blazquez2021}. Tree-based isolation methods such as Isolation Forest \cite{liu2008} are popular because they need no labels, while robust statistics based on the median and median absolute deviation (MAD) provide outlier scores that are less sensitive to the outliers themselves \cite{leys2013}. Changing usage patterns are an instance of concept drift \cite{gama2014}, which static models do not handle.
 
 This paper is an empirical study. It asks whether combining time-aware adaptive thresholds with Isolation Forest improves detection over each used alone, and whether making the threshold explicitly drift-aware helps further. Our contributions are:
 \begin{itemize}
@@ -38,7 +38,15 @@ This paper is an empirical study. It asks whether combining time-aware adaptive 
 We do not claim a new algorithm; the components are established, and the contribution is the controlled comparison and its findings.
 
 \section{Related Work}
-Chandola et al.\ survey anomaly detection techniques and their assumptions \cite{chandola2009}. Isolation Forest isolates points by random partitioning, assigning shorter average path lengths to anomalies \cite{liu2008}. Leys et al.\ argue for MAD-based outlier criteria over mean and standard deviation \cite{leys2013}, which motivates our robust adaptive score. Gama et al.\ survey adaptation to concept drift \cite{gama2014}. Our work applies these established ideas to household electricity data and evaluates them together. A fuller review of energy-specific anomaly detection literature should be added before submission.
+\textbf{Surveys.} General surveys of outlier and anomaly detection are given by Hodge and Austin \cite{hodge2004}, Chandola et al.\ \cite{chandola2009} and, for the one-class setting, Pimentel et al.\ \cite{pimentel2014}. Time-series-specific taxonomies are provided by Bl\'azquez-Garc\'ia et al.\ \cite{blazquez2021}, and deep-learning methods are covered by Chalapathy and Chawla \cite{chalapathy2019}.
+
+\textbf{Unsupervised detectors.} Isolation Forest isolates points by random partitioning and assigns shorter average path lengths to anomalies \cite{liu2008,liu2012}. The local outlier factor scores each point by how isolated it is relative to its neighbourhood \cite{breunig2000}. For sequences, LSTM networks trained on normal data have been used as predictors whose errors indicate anomalies \cite{malhotra2015}, and streaming detectors for real-time data have been proposed \cite{ahmad2017}.
+
+\textbf{Robust statistics and seasonality.} Leys et al.\ argue for the median absolute deviation (MAD) over the mean and standard deviation as an outlier criterion \cite{leys2013}, and Rousseeuw and Croux study alternatives to it \cite{rousseeuw1993}. Seasonal-trend decomposition by loess \cite{cleveland1990} followed by median/MAD-based detection on the residual is used for anomaly detection in cloud metrics with seasonality \cite{hochenbaum2017}. Our adaptive threshold follows the same robust-score idea but conditions directly on the hour and day type instead of decomposing the series.
+
+\textbf{Sequential monitoring and drift.} Exponentially weighted moving-average control charts \cite{roberts1959} and cumulative-sum schemes \cite{page1954} are classical tools for tracking a process level and detecting shifts; our drift-aware threshold uses an exponentially weighted baseline per slot. Adaptation to changing data distributions is surveyed by Gama et al.\ \cite{gama2014}. The closest work to our drift motivation is a drift-aware methodology for anomaly detection in smart grids \cite{fenza2019}; we do not compare against it.
+
+\textbf{Energy data.} Reviews of anomaly detection for building energy consumption \cite{himeur2021} and of smart meter data analytics \cite{wang2019} describe the application setting and note the lack of annotated anomaly data, which motivates our use of injected anomalies. Public datasets include the UCI household dataset used here \cite{hebrail2006} and UK-DALE, which adds appliance-level measurements \cite{kelly2015}.
 
 \section{Method}
 \subsection{Problem and Features}
@@ -49,7 +57,7 @@ Let $x_t$ be the consumption at hour $t$. The goal is a binary label $y_t$ (anom
 
 \textbf{Adaptive threshold.} Readings are grouped by slot $s=(\text{hour},\text{weekend})$. For slot $s$, the baseline $m_t$ is the median of the previous 14 readings in that slot and the scale is $\hat\sigma_t=\max(1.4826\cdot\text{MAD},0.05)$. The score is $z_t=(x_t-m_t)/\hat\sigma_t$ and a reading is flagged if $|z_t|>4$.
 
-\textbf{Drift-aware (EWMA) threshold.} For each slot we keep an exponentially weighted mean $\mu_s$ and mean absolute deviation $d_s$ with rate $\alpha=0.1$. A reading is flagged if $|x_t-\mu_s|>4\cdot\max(1.25\,d_s,0.05)$ once the slot has at least four observations. Flagged readings are not used to update the baseline, preventing anomalies from contaminating it, while unflagged readings move the baseline so that slow changes in usage are tracked.
+\textbf{Drift-aware (EWMA) threshold.} Following the exponentially weighted moving-average idea \cite{roberts1959}, for each slot we keep an exponentially weighted mean $\mu_s$ and mean absolute deviation $d_s$ with rate $\alpha=0.1$. A reading is flagged if $|x_t-\mu_s|>4\cdot\max(1.25\,d_s,0.05)$ once the slot has at least four observations. Flagged readings are not used to update the baseline, preventing anomalies from contaminating it, while unflagged readings move the baseline so that slow changes in usage are tracked.
 
 \textbf{Isolation Forest.} 200 trees, contamination $0.03$, fitted on the training split.
 
@@ -128,7 +136,7 @@ The drift-aware threshold achieves the best F1 (0.959), with perfect recall and 
 Performance drops sharply on real data (Table~\ref{tab:real}). The best F1 is only 0.239 (drift-aware), followed by the hybrid (0.234), the adaptive threshold (0.229), Isolation Forest (0.203) and the fixed threshold (0.157). The three time-aware methods are within about one standard deviation of each other (no significance test was run) and the hybrid brings no benefit over the adaptive threshold alone. They do improve recall (0.32--0.46 versus 0.09 for the fixed threshold) but at a false alarm rate of 4.9--9.0\%, against 0.2\% for the fixed threshold. The fixed threshold and Isolation Forest are conservative, with higher precision but low recall. Raising the threshold factor did not help: selecting the factor on the training period alone returned the default value of 4.
 
 \subsection{Why real data is harder}
-Household load is bursty. Appliance events such as kettles, ovens and heaters create large, short, irregular peaks, so the normal range for a given slot is wide and heavy-tailed. Many injected anomalies, especially additive increases at the household's mean scale, lie inside that range and are indistinguishable from legitimate use by a per-slot threshold. This reflects a genuine limit of univariate threshold methods and suggests that per-appliance sub-metering or longer-window features are needed.
+Household load is bursty. Appliance events such as kettles, ovens and heaters create large, short, irregular peaks, so the normal range for a given slot is wide and heavy-tailed. Many injected anomalies, especially additive increases at the household's mean scale, lie inside that range and are indistinguishable from legitimate use by a per-slot threshold. This reflects a genuine limit of univariate threshold methods and suggests that per-appliance sub-metering (as in UK-DALE \cite{kelly2015}) or longer-window features are needed.
 
 \section{Limitations}
 \begin{itemize}
@@ -136,7 +144,7 @@ Household load is bursty. Appliance events such as kettles, ovens and heaters cr
 \item Real-data anomalies are injected, not naturally occurring; results depend on the injection recipe and magnitude, and detectors may behave differently on true faults.
 \item Only one household is used, and the standard deviations on real data reflect injection randomness only.
 \item Hyperparameters (thresholds 3, 4 and 5, 2.5, window 14, $\alpha=0.1$) were set a priori. Only the threshold factor was checked on the training period for the real data; a full validation-based search was not performed.
-\item The comparison omits stronger baselines such as seasonal-decomposition residuals, autoencoders, or LSTM forecasters.
+\item The comparison omits stronger baselines such as seasonal-decomposition residuals \cite{cleveland1990,hochenbaum2017}, local outlier factor \cite{breunig2000}, or LSTM predictors \cite{malhotra2015}.
 \end{itemize}
 
 \section{Conclusion}
@@ -147,10 +155,27 @@ Code, the experiment scripts and a notebook are available in the project reposit
 
 \begin{thebibliography}{00}
 \bibitem{chandola2009} V. Chandola, A. Banerjee, and V. Kumar, ``Anomaly detection: A survey,'' \emph{ACM Computing Surveys}, vol. 41, no. 3, pp. 1--58, 2009.
+\bibitem{blazquez2021} A. Bl\'azquez-Garc\'ia, A. Conde, U. Mori, and J. A. Lozano, ``A review on outlier/anomaly detection in time series data,'' \emph{ACM Computing Surveys}, vol. 54, no. 3, 2021.
 \bibitem{liu2008} F. T. Liu, K. M. Ting, and Z.-H. Zhou, ``Isolation forest,'' in \emph{Proc. IEEE Int. Conf. Data Mining (ICDM)}, 2008, pp. 413--422.
 \bibitem{leys2013} C. Leys, C. Ley, O. Klein, P. Bernard, and L. Licata, ``Detecting outliers: Do not use standard deviation around the mean, use absolute deviation around the median,'' \emph{J. Experimental Social Psychology}, vol. 49, no. 4, pp. 764--766, 2013.
 \bibitem{gama2014} J. Gama, I. \v{Z}liobait\.{e}, A. Bifet, M. Pechenizkiy, and A. Bouchachia, ``A survey on concept drift adaptation,'' \emph{ACM Computing Surveys}, vol. 46, no. 4, pp. 1--37, 2014.
+\bibitem{hodge2004} V. J. Hodge and J. Austin, ``A survey of outlier detection methodologies,'' \emph{Artificial Intelligence Review}, vol. 22, no. 2, pp. 85--126, 2004.
+\bibitem{pimentel2014} M. A. F. Pimentel, D. A. Clifton, L. Clifton, and L. Tarassenko, ``A review of novelty detection,'' \emph{Signal Processing}, vol. 99, pp. 215--249, 2014.
+\bibitem{chalapathy2019} R. Chalapathy and S. Chawla, ``Deep learning for anomaly detection: A survey,'' arXiv:1901.03407, 2019.
+\bibitem{liu2012} F. T. Liu, K. M. Ting, and Z.-H. Zhou, ``Isolation-based anomaly detection,'' \emph{ACM Trans. Knowl. Discov. Data}, vol. 6, no. 1, pp. 3:1--3:39, 2012.
+\bibitem{breunig2000} M. M. Breunig, H.-P. Kriegel, R. T. Ng, and J. Sander, ``LOF: Identifying density-based local outliers,'' in \emph{Proc. ACM SIGMOD Int. Conf. Management of Data}, 2000, pp. 93--104.
+\bibitem{malhotra2015} P. Malhotra, L. Vig, G. Shroff, and P. Agarwal, ``Long short term memory networks for anomaly detection in time series,'' in \emph{Proc. European Symp. Artificial Neural Networks (ESANN)}, 2015, pp. 89--94.
+\bibitem{ahmad2017} S. Ahmad, A. Lavin, S. Purdy, and Z. Agha, ``Unsupervised real-time anomaly detection for streaming data,'' \emph{Neurocomputing}, vol. 262, pp. 134--147, 2017.
+\bibitem{rousseeuw1993} P. J. Rousseeuw and C. Croux, ``Alternatives to the median absolute deviation,'' \emph{J. American Statistical Association}, vol. 88, no. 424, pp. 1273--1283, 1993.
+\bibitem{cleveland1990} R. B. Cleveland, W. S. Cleveland, J. E. McRae, and I. Terpenning, ``STL: A seasonal-trend decomposition procedure based on loess,'' \emph{J. Official Statistics}, vol. 6, no. 1, pp. 3--73, 1990.
+\bibitem{hochenbaum2017} J. Hochenbaum, O. S. Vallis, and A. Kejariwal, ``Automatic anomaly detection in the cloud via statistical learning,'' arXiv:1704.07706, 2017.
+\bibitem{roberts1959} S. W. Roberts, ``Control chart tests based on geometric moving averages,'' \emph{Technometrics}, vol. 1, no. 3, pp. 239--250, 1959.
+\bibitem{page1954} E. S. Page, ``Continuous inspection schemes,'' \emph{Biometrika}, vol. 41, no. 1--2, pp. 100--115, 1954.
+\bibitem{fenza2019} G. Fenza, M. Gallo, and V. Loia, ``Drift-aware methodology for anomaly detection in smart grid,'' \emph{IEEE Access}, vol. 7, pp. 9645--9657, 2019.
+\bibitem{himeur2021} Y. Himeur, K. Ghanem, A. Alsalemi, F. Bensaali, and A. Amira, ``Artificial intelligence based anomaly detection of energy consumption in buildings: A review, current trends and new perspectives,'' \emph{Applied Energy}, vol. 287, art. 116601, 2021.
+\bibitem{wang2019} Y. Wang, Q. Chen, T. Hong, and C. Kang, ``Review of smart meter data analytics: Applications, methodologies, and challenges,'' \emph{IEEE Trans. Smart Grid}, vol. 10, no. 3, pp. 3125--3148, 2019.
 \bibitem{hebrail2006} G. Hebrail and A. Berard, ``Individual household electric power consumption,'' UCI Machine Learning Repository, 2006. [Online]. Available: \url{https://archive.ics.uci.edu/dataset/235}
+\bibitem{kelly2015} J. Kelly and W. Knottenbelt, ``The UK-DALE dataset, domestic appliance-level electricity demand and whole-house demand from five UK homes,'' \emph{Scientific Data}, vol. 2, art. 150007, 2015.
 \bibitem{pedregosa2011} F. Pedregosa \emph{et al.}, ``Scikit-learn: Machine learning in Python,'' \emph{J. Machine Learning Research}, vol. 12, pp. 2825--2830, 2011.
 \end{thebibliography}
 
